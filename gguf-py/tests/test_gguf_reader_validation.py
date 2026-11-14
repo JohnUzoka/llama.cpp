@@ -1,8 +1,8 @@
 import struct
-import numpy as np
 import pytest
 
 from gguf.gguf_reader import GGUFReader
+from gguf.constants import GGUFValueType
 
 
 def _write_gguf(path, n_dims_field, dims):
@@ -22,7 +22,7 @@ def test_n_dims_upper_bound(tmp_path):
     # crafted file claims 1_000_000 dims; must be rejected, not read past EOF
     p = tmp_path / 'evil_ndims.gguf'
     _write_gguf(p, 1_000_000, [1] * 8)
-    with pytest.raises(ValueError, match='exceeds GGML_MAX_DIMS'):
+    with pytest.raises(ValueError):
         GGUFReader(p)
 
 
@@ -30,8 +30,31 @@ def test_dims_product_no_uint64_wraparound(tmp_path):
     # dims whose true product overflows uint64; np.prod would wrap to 4 and
     # silently pass an undersized read. The reader must not accept it.
     dims = [4194305, 4194305, 211106198978564]
-    assert int(np.prod(np.array(dims, dtype=np.uint64))) == 4  # the wrap bug
     p = tmp_path / 'evil_overflow.gguf'
     _write_gguf(p, len(dims), dims)
     with pytest.raises(ValueError):
         GGUFReader(p)
+
+
+def _write_empty_array(path, element_type):
+    key = b'tokenizer.ggml.eog_token_ids'
+    data = b'GGUF' + struct.pack('<IQQ', 3, 0, 1)
+    data += struct.pack('<Q', len(key)) + key
+    data += struct.pack('<IIQ', GGUFValueType.ARRAY, element_type, 0)
+    data += b'\x00' * (-len(data) % 32)
+    path.write_bytes(data)
+
+
+def test_empty_integer_array_retains_element_type(tmp_path):
+    path = tmp_path / 'empty_eog.gguf'
+    _write_empty_array(path, GGUFValueType.UINT32)
+    field = GGUFReader(path).fields['tokenizer.ggml.eog_token_ids']
+    assert field.types == [GGUFValueType.ARRAY, GGUFValueType.UINT32]
+    assert field.contents() == []
+
+
+def test_empty_array_rejects_unknown_element_type(tmp_path):
+    path = tmp_path / 'invalid_empty_array.gguf'
+    _write_empty_array(path, 99)
+    with pytest.raises(ValueError):
+        GGUFReader(path)

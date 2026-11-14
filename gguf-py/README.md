@@ -32,6 +32,21 @@ pip install gguf[gui]
 
 [gguf/scripts/gguf_editor_gui.py](https://github.com/ggml-org/llama.cpp/blob/master/gguf-py/gguf/scripts/gguf_editor_gui.py) — Allows for viewing, editing, adding, or removing metadata values within a GGUF file as well as viewing its tensors with a Qt interface.
 
+## Explicit end-of-generation token policy
+
+`GGUFWriter.add_eog_token_ids(ids)` writes the optional
+`tokenizer.ggml.eog_token_ids` extension as an array of `UINT32` token IDs.
+In the corresponding llama.cpp runtime, presence makes this the complete
+end-of-generation set: stop-looking spellings do not add more IDs or change
+the vocabulary's declared token types. An explicitly empty array means no
+token-based generation stops; omitting the key retains legacy inference.
+IDs must be within the model vocabulary. This policy is independent of BOS
+insertion and lexical/special-token parsing.
+
+Older runtimes may ignore this extension. Use a runtime that implements it
+when canonical stop behavior matters. Empty arrays retain their element
+type through the Python writer and reader.
+
 ## Development
 Maintainers who participate in development of this package are advised to install it in editable mode:
 

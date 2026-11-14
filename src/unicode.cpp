@@ -816,6 +816,9 @@ static std::vector<size_t> unicode_regex_split_custom_qwen35(const std::string &
             // regex: (?i:'s|'t|'re|'ve|'m|'ll|'d) // case insensitive
             if (cpt == '\'' && pos+1 < offset_end) {
                 uint32_t cpt_next = unicode_tolower(_get_cpt(pos+1));
+                if (cpt_next == 0x017F) {
+                    cpt_next = 's'; // Unicode case-folding of long s
+                }
                 if (cpt_next == 's' || cpt_next == 't' || cpt_next == 'm' || cpt_next == 'd') {
                     pos += _add_token(pos+2);
                     continue;

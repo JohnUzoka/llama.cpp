@@ -4,6 +4,7 @@
 #include "gguf.h"
 
 #include "llama-arch.h"
+#include "llama-adapter.h"
 #include "llama.h"
 #include "llama-hparams.h"
 #include "llama-model.h"
@@ -150,6 +151,11 @@ void llama_model_saver::add_tensor(const struct ggml_tensor * tensor) {
 void llama_model_saver::add_kv_from_model() {
     const llama_hparams & hparams = model->hparams;
     const llama_vocab   & vocab   = model->vocab;
+
+    if (model->embedded_lora) {
+        gguf_set_val_str(gguf_ctx, "general.type", "model");
+        gguf_set_kv(gguf_ctx, model->embedded_lora->embedded_metadata.get());
+    }
 
     const int32_t n_vocab = vocab.n_tokens();
     std::vector<std::string> tokens(n_vocab);
@@ -437,6 +443,12 @@ void llama_model_saver::add_kv_from_model() {
     add_kv(LLM_KV_TOKENIZER_TOKEN_TYPE_COUNT,        vocab.n_token_types());
     add_kv(LLM_KV_TOKENIZER_SCORES,                  scores);
     add_kv(LLM_KV_TOKENIZER_MERGES,                  vocab.get_bpe_merges());
+    const auto & eog_set = vocab.get_eog_tokens();
+    const std::vector<uint32_t> eog_ids(eog_set.begin(), eog_set.end());
+    const uint32_t empty_eog = 0;
+    // Empty is authoritative too; the generic array helper omits empty values.
+    gguf_set_arr_data(gguf_ctx, llm_kv(LLM_KV_TOKENIZER_EOG_IDS).c_str(), GGUF_TYPE_UINT32,
+                      eog_ids.empty() ? &empty_eog : eog_ids.data(), eog_ids.size());
     // FIXME llama_token is type i32 but when reading in a GGUF file u32 is expected, not an issue for writing though
     if (vocab.token_bos()  != LLAMA_TOKEN_NULL) { add_kv(LLM_KV_TOKENIZER_BOS_ID, uint32_t(vocab.token_bos()));  }
     if (vocab.token_eos()  != LLAMA_TOKEN_NULL) { add_kv(LLM_KV_TOKENIZER_EOS_ID, uint32_t(vocab.token_eos()));  }
@@ -453,6 +465,7 @@ void llama_model_saver::add_kv_from_model() {
     add_kv(LLM_KV_TOKENIZER_ADD_PREFIX,              vocab.get_add_space_prefix());
     add_kv(LLM_KV_TOKENIZER_REMOVE_EXTRA_WS,         vocab.get_remove_extra_whitespaces());
     add_kv(LLM_KV_TOKENIZER_CLEAN_SPACES,            vocab.get_clean_spaces());
+    add_kv(LLM_KV_TOKENIZER_NORMALIZER_NFC,          vocab.get_normalizer_opts().nfc);
     add_kv(LLM_KV_TOKENIZER_PRECOMPILED_CHARSMAP,    vocab.get_precompiled_charsmap());
     // add_kv(LLM_KV_TOKENIZER_HF_JSON,                 ???);
     // add_kv(LLM_KV_TOKENIZER_RWKV,                    ???);
@@ -463,12 +476,7 @@ void llama_model_saver::add_kv_from_model() {
     if (vocab.token_fim_rep() != LLAMA_TOKEN_NULL) { add_kv(LLM_KV_TOKENIZER_FIM_REP_ID, uint32_t(vocab.token_fim_rep())); }
     if (vocab.token_fim_sep() != LLAMA_TOKEN_NULL) { add_kv(LLM_KV_TOKENIZER_FIM_SEP_ID, uint32_t(vocab.token_fim_sep())); }
 
-    // TODO: implement LoRA support
-    // add_kv(LLM_KV_ADAPTER_TYPE,                      ???);
-    // add_kv(LLM_KV_ADAPTER_LORA_ALPHA,                ???);
-    // add_kv(LLM_KV_ADAPTER_LORA_TASK_NAME,            ???);
-    // add_kv(LLM_KV_ADAPTER_LORA_PROMPT_PREFIX,        ???);
-    // add_kv(LLM_KV_ADAPTER_ALORA_INVOCATION_TOKENS,   ???);
+    // External adapters stay separate; embedded adapter metadata is copied above.
 
     add_kv(LLM_KV_POSNET_EMBEDDING_LENGTH,           hparams.posnet.n_embd);
     add_kv(LLM_KV_POSNET_BLOCK_COUNT,                hparams.posnet.n_layer);
@@ -544,6 +552,12 @@ void llama_model_saver::add_tensors_from_model() {
                 continue;
             }
             add_tensor(tensor);
+        }
+    }
+    if (model->embedded_lora) {
+        for (const auto & entry : model->embedded_lora->ab_map) {
+            add_tensor(entry.second.a);
+            add_tensor(entry.second.b);
         }
     }
 }

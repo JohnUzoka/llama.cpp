@@ -153,6 +153,20 @@ llama_test(test-tokenizer-0 NAME test-tokenizer-0-qwen35          LABEL behavior
 llama_test(test-tokenizer-0 NAME test-tokenizer-0-refact          LABEL behavior  ARGS ${PROJECT_SOURCE_DIR}/models/ggml-vocab-refact.gguf)
 llama_test(test-tokenizer-0 NAME test-tokenizer-0-starcoder       LABEL behavior  ARGS ${PROJECT_SOURCE_DIR}/models/ggml-vocab-starcoder.gguf)
 
+llama_build(test-tokenizer-normalization.cpp LINK llama ggml)
+llama_test(test-tokenizer-normalization NAME test-tokenizer-normalization-gpt2 LABEL behavior ARGS ${PROJECT_SOURCE_DIR}/models/ggml-vocab-gpt-2.gguf)
+llama_test(test-tokenizer-normalization NAME test-tokenizer-normalization-qwen35 LABEL behavior ARGS ${PROJECT_SOURCE_DIR}/models/ggml-vocab-qwen35.gguf)
+llama_test(test-tokenizer-normalization NAME test-tokenizer-eog-policy LABEL behavior ARGS --eog-policy)
+llama_test(test-tokenizer-normalization NAME test-tokenizer-eog-roundtrip LABEL behavior ARGS --eog-roundtrip)
+
+if (WIN32)
+    # Exercise the real internal mapping code without exporting its C++ types from llama.dll.
+    llama_build_and_test(test-mmap-win32.cpp ../src/llama-mmap.cpp ../src/llama-impl.cpp
+        LABEL behavior LINK ggml)
+    target_include_directories(test-mmap-win32 PRIVATE ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/include)
+    target_link_libraries(test-mmap-win32 PRIVATE psapi)
+endif()
+
 if (NOT WIN32)
     llama_test_cmd(
         ${CMAKE_CURRENT_SOURCE_DIR}/test-tokenizers-repo.sh
@@ -297,6 +311,7 @@ if (NOT WIN32 OR NOT BUILD_SHARED_LIBS)
     )
 
     llama_build_and_test(test-kv-mean-center.cpp LABEL behavior)
+    llama_build_and_test(test-embedded-lora.cpp LABEL behavior)
     llama_build(test-fusion.cpp)
 endif()
 
@@ -363,6 +378,7 @@ if (GGML_METAL AND NOT GGML_BACKEND_DL)
 endif()
 
 llama_build(test-backend-ops.cpp LINK ggml)
+llama_build_and_test(test-flash-attn-precision.cpp LABEL "main behavior backend" LINK ggml)
 
 llama_build_and_test(test-tiled-mulmat.cpp  LABEL "main behavior backend"  LINK ggml)
 llama_build_and_test(test-model-load-cancel.cpp LABEL "model behavior")

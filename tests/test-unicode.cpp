@@ -82,5 +82,14 @@ int main() {
         success = false;
     }
 
+    const std::vector<std::string> qwen35_regex = {
+        "(?:'[sS]|'[tT]|'[rR][eE]|'[vV][eE]|'[mM]|'[lL][lL]|'[dD])|[^\\r\\n\\p{L}\\p{N}]?[\\p{L}\\p{M}]+|\\p{N}| ?[^\\s\\p{L}\\p{M}\\p{N}]+[\\r\\n]*|\\s*[\\r\\n]+|\\s+(?!\\S)|\\s+",
+    };
+    if (unicode_regex_split("'\xc5\xbfomething", qwen35_regex, false) !=
+            std::vector<std::string>{"'\xc5\xbf", "omething"}) {
+        fprintf(stderr, "unexpected Unicode contraction split\n");
+        success = false;
+    }
+
     return success ? 0 : 1;
 }
